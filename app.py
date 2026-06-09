@@ -42,7 +42,7 @@ def make_chart(df, x_col, y_cols, title):
     fig = go.Figure()
     
     # Separate pressure and rate columns
-    pressure_cols = [col for col in y_cols if any(pressure in col.lower() for pressure in ["pressure", "psi"])]
+    pressure_cols = [col for col in y_cols if any(discharge in col.lower() for discharge in ["pressure", "psi"])]
     rate_cols = [col for col in y_cols if any(rate in col.lower() for rate in ["rate", "bpm"])]
     other_cols = [col for col in y_cols if col not in pressure_cols and col not in rate_cols]
     
