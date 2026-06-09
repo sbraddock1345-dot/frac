@@ -34,23 +34,6 @@ python -m pip install -e .
 frac-pump-chart
 ```
 
-## Build a Windows executable
-
-From PowerShell:
-```powershell
-powershell -ExecutionPolicy Bypass -File ..\build_exe.ps1
-```
-
-Or from cmd.exe:
-```cmd
-build_exe.bat
-```
-
-After a successful build, the executable will be available at:
-```text
-dist\FracPumpChart.exe
-```
-
 ## Best CSV columns
 The app works best with columns like:
 
