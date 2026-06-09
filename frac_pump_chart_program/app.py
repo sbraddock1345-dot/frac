@@ -40,17 +40,54 @@ def read_csv(file):
 
 def make_chart(df, x_col, y_cols, title):
     fig = go.Figure()
-    for col in y_cols:
+    
+    # Separate pressure and rate columns
+    pressure_cols = [col for col in y_cols if any(p in col.lower() for p in ["pressure", "psi"])]
+    rate_cols = [col for col in y_cols if any(r in col.lower() for r in ["rate", "bpm"])]
+    other_cols = [col for col in y_cols if col not in pressure_cols and col not in rate_cols]
+    
+    # Add pressure traces on primary y-axis
+    for col in pressure_cols:
         fig.add_trace(go.Scatter(
             x=df[x_col],
             y=df[col],
             mode="lines",
-            name=col
+            name=col,
+            yaxis="y1"
         ))
+    
+    # Add rate traces on secondary y-axis
+    for col in rate_cols:
+        fig.add_trace(go.Scatter(
+            x=df[x_col],
+            y=df[col],
+            mode="lines",
+            name=col,
+            yaxis="y2"
+        ))
+    
+    # Add other traces on primary y-axis
+    for col in other_cols:
+        fig.add_trace(go.Scatter(
+            x=df[x_col],
+            y=df[col],
+            mode="lines",
+            name=col,
+            yaxis="y1"
+        ))
+    
     fig.update_layout(
         title=title,
         xaxis_title=x_col,
-        yaxis_title="Value",
+        yaxis=dict(
+            title="Pressure (PSI)",
+            side="left"
+        ),
+        yaxis2=dict(
+            title="Rate (BPM)",
+            overlaying="y",
+            side="right"
+        ),
         hovermode="x unified",
         height=600
     )
