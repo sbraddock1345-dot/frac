@@ -10,8 +10,9 @@ st.caption("Upload CSV pump data and chart rate, pressure, and slurry data.")
 uploaded = st.file_uploader("Upload frac pump CSV", type=["csv"])
 
 REQUIRED_HINTS = {
-    "time": ["time", "timestamp", "date", "datetime"],
-    "pressure": ["discharge psi", "treating pressure", "tp", "psi"],
+    "date": ["date"],
+    "time": ["time"],
+    "pressure": ["discharge psi", "discharge pressure", "pressure", "treating pressure", "tp", "psi"],
     "rate": ["rate", "slurry rate", "bpm"]
 }
 
@@ -42,8 +43,8 @@ def make_chart(df, x_col, y_cols, title):
     fig = go.Figure()
     
     # Separate pressure and rate columns
-    pressure_cols = [col for col in y_cols if any(discharge in col.lower() for discharge in ["discharge PSI", "psi"])]
-    rate_cols = [col for col in y_cols if any(rate in col.lower() for rate in ["rate", "bpm"])]
+    pressure_cols = [col for col in y_cols if any(p in col.lower() for p in ["discharge", "pressure", "psi"])]
+    rate_cols = [col for col in y_cols if any(r in col.lower() for r in ["rate", "bpm"])]
     other_cols = [col for col in y_cols if col not in pressure_cols and col not in rate_cols]
     
     # Add pressure traces on primary y-axis
@@ -80,7 +81,7 @@ def make_chart(df, x_col, y_cols, title):
         title=title,
         xaxis_title=x_col,
         yaxis=dict(
-            title="Pressure (PSI)",
+            title="Discharge PSI",
             side="left"
         ),
         yaxis2=dict(
@@ -98,7 +99,7 @@ if uploaded is None:
     st.markdown("""
     **Common columns this app can chart:**
     - Time / Timestamp
-    - Treating Pressure PSI
+    - Discharge PSI
     - Slurry Rate BPM
     """)
 else:
@@ -119,11 +120,29 @@ else:
 
     st.sidebar.header("Column setup")
 
-    x_col = st.sidebar.selectbox(
-        "Time / X-axis column",
-        cols,
-        index=cols.index(guessed_time) if guessed_time in cols else 0
-    )
+    use_separate_date_time = st.sidebar.checkbox("Use separate date and time columns", value=True)
+    
+    if use_separate_date_time:
+        guessed_date = guess_column(cols, REQUIRED_HINTS["date"])
+        date_col = st.sidebar.selectbox(
+            "Date column",
+            cols,
+            index=cols.index(guessed_date) if guessed_date in cols else 0
+        )
+        time_col = st.sidebar.selectbox(
+            "Time column",
+            cols,
+            index=cols.index(guessed_time) if guessed_time in cols else 0
+        )
+        x_col = None
+    else:
+        x_col = st.sidebar.selectbox(
+            "Time / X-axis column",
+            cols,
+            index=cols.index(guessed_time) if guessed_time in cols else 0
+        )
+        date_col = None
+        time_col = None
 
     default_y = [c for c in [guessed_pressure, "Total Rate" if "Total Rate" in cols else guessed_rate] if c in cols]
     y_cols = st.sidebar.multiselect(
@@ -136,13 +155,22 @@ else:
         st.sidebar.write(f"Combined rate columns: {', '.join(rate_columns)}")
         st.sidebar.write("Using Total Rate when multiple rate columns are present.")
 
-    # Try to convert time column
+    # Handle datetime conversion
     x_is_datetime = False
-    try:
-        df[x_col] = pd.to_datetime(df[x_col])
-        x_is_datetime = True
-    except Exception:
-        pass
+    if use_separate_date_time and date_col and time_col:
+        try:
+            df["_datetime"] = pd.to_datetime(df[date_col].astype(str) + " " + df[time_col].astype(str))
+            x_col = "_datetime"
+            x_is_datetime = True
+        except Exception as e:
+            st.sidebar.error(f"Could not combine date and time columns: {e}")
+            x_col = None
+    elif x_col:
+        try:
+            df[x_col] = pd.to_datetime(df[x_col])
+            x_is_datetime = True
+        except Exception:
+            pass
 
     numeric_cols = []
     for c in cols:
@@ -190,20 +218,45 @@ else:
     else:
         st.warning("Select at least one column to chart.")
 
-    st.subheader("Raw data preview")
-    st.write(f"Loaded {len(df_full):,} rows from the uploaded CSV.")
-    preview_options = [50, 100, 200, 500, 1000, "All"]
-    preview_limit = st.sidebar.selectbox("Preview rows", preview_options, index=2)
-    preview_df = df_full if preview_limit == "All" else df_full.head(preview_limit)
-    st.dataframe(preview_df, use_container_width=True)
+    show_data_tools = st.sidebar.checkbox("Show raw data, spike check & export", value=True)
+
+    if show_data_tools:
+        st.subheader("Raw data preview")
+        st.write(f"Loaded {len(df_full):,} rows from the uploaded CSV.")
+        preview_options = [50, 100, 200, 500, 1000, "All"]
+        preview_limit = st.sidebar.selectbox("Preview rows", preview_options, index=2)
+        preview_df = df_full if preview_limit == "All" else df_full.head(preview_limit)
+        st.dataframe(preview_df, use_container_width=True)
 
     st.subheader("Stage / job summary")
 
     summary_cols = [c for c in y_cols if c in numeric_cols]
     if summary_cols:
-        summary = df[summary_cols].agg(["min", "max", "mean"]).T
-        summary["range"] = summary["max"] - summary["min"]
-        st.dataframe(summary, use_container_width=True)
+        # Filter to only rows where any rate column is > 0.1
+        rate_cols_for_filter = [c for c in summary_cols if any(r in c.lower() for r in ["rate", "bpm"])]
+        if rate_cols_for_filter:
+            df_filtered = df[df[rate_cols_for_filter].max(axis=1) > 0.1]
+        else:
+            df_filtered = df
+        
+        summary = df_filtered[summary_cols].agg(["min", "max", "mean"]).T
+        summary.columns = ["Min", "Max", "Average"]
+        
+        # Add total bbls pumped for rate columns
+        rate_cols_in_summary = [c for c in summary_cols if any(r in c.lower() for r in ["rate", "bpm"])]
+        if rate_cols_in_summary:
+            st.dataframe(summary, use_container_width=True)
+            st.subheader("Total Barrels Pumped")
+            total_bbls = {}
+            for col in rate_cols_in_summary:
+                # Each row is 1 second, rate is in BPM (barrels per minute)
+                # Convert to barrels per second: rate_bpm / 60
+                total_bbls[col] = (df[col].sum() / 60)
+            if total_bbls:
+                bbls_df = pd.DataFrame(list(total_bbls.items()), columns=["Column", "Total Barrels"])
+                st.dataframe(bbls_df, use_container_width=True)
+        else:
+            st.dataframe(summary, use_container_width=True)
     else:
         st.info("Select numeric columns to generate summary.")
 
@@ -251,11 +304,11 @@ else:
             )
             st.plotly_chart(fig2, use_container_width=True)
 
-    st.subheader("Export cleaned data")
-    csv_out = df.to_csv(index=False).encode("utf-8")
-    st.download_button(
-        "Download cleaned CSV",
-        csv_out,
-        file_name="cleaned_frac_pump_data.csv",
-        mime="text/csv"
-    )
+        st.subheader("Export cleaned data")
+        csv_out = df.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            "Download cleaned CSV",
+            csv_out,
+            file_name="cleaned_frac_pump_data.csv",
+            mime="text/csv"
+        )
