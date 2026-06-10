@@ -10,11 +10,13 @@ import plotly.graph_objects as go
 st.set_page_config(page_title="Frac Pump Data Chart", layout="wide")
 
 LOGO_PATH = "assets/max-fluid-power-logo.png"
+OFFLINE_APP_URL = "https://github.com/sbraddock1345-dot/frac/releases/download/desktop-v1.0.0/MFPFracChart.exe"
 
 header_left, header_right = st.columns([0.78, 0.22])
 with header_left:
     st.title("Frac Pump Data Chart")
     st.caption("Upload CSV pump data and chart rate, pressure, and slurry data.")
+    st.link_button("Download Offline Windows App", OFFLINE_APP_URL)
 with header_right:
     st.image(LOGO_PATH, use_container_width=True)
 
